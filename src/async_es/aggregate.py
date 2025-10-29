@@ -49,6 +49,13 @@ class Aggregate[AggregateIdT: AggregateId]:
     def events(self) -> list[DomainEvent[AggregateIdT, Any]]:
         return list(self._events)
 
+    def get_event_as[PayloadT: "DataclassInstance"](
+        self,
+        payload_type: type[PayloadT],  # noqa: ARG002
+        index: int = -1,
+    ) -> DomainEvent[AggregateIdT, PayloadT]:
+        return self.events[index]
+
     def publish_events(self) -> list[DomainEvent[AggregateIdT, Any]]:
         for event in self._events:
             event.publish()
