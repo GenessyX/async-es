@@ -7,7 +7,11 @@ exclude: docs|node_modules|migrations|.git|.tox
 fail_fast: false
 
 default_language_version:
-  python: python3.12
+  python: python3.14
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
