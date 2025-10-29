@@ -16,11 +16,21 @@ build-backend = "uv_build"
 
 [dependency-groups]
 lint = ["pre-commit>=4.3.0", "ruff>=0.14.2"]
+tests = ["pytest>=8.4.2", "pytest-sugar>=1.1.1"]
 types = ["mypy>=1.18.2"]
 
 [tool.ruff]
 line-length = 120
 target-version = "py314"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "TD002", "TD003", "EXE", "ERA", "FIX", "INP001", "UP037"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/**/*.py" = ["S101", "S106", "S105", "S311", "PLR2004", "FBT001"]
 
 [tool.ruff.format]
 quote-style = "double"
