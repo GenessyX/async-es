@@ -1,0 +1,32 @@
+[project]
+name = "async-es"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "GenessyX", email = "haritonovgleb123@gmail.com" }]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+async-es = "async_es:main"
+
+[build-system]
+requires = ["uv_build>=0.8.19,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+lint = ["ruff>=0.14.2"]
+types = ["mypy>=1.18.2"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+
+[tool.pyright]
+typeCheckingMode = "standard"
