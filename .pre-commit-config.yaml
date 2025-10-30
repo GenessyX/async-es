@@ -47,7 +47,7 @@ repos:
     rev: 0.6.10
     hooks:
       - id: uv-export
-        args: ["--format", "requirements-txt", "--no-hashes", "--frozen", "--output-file", "requirements.txt"]
+        args: ["--format", "requirements-txt", "--no-hashes", "--frozen", "--output-file", "requirements.txt", "--group", "tests"]
         always_run: true
 
   - repo: https://github.com/GenessyX/validate-mypy-deps
@@ -61,7 +61,16 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        additional_dependencies: []
+        additional_dependencies:
+          - colorama==0.4.6 ; sys_platform == 'win32'
+          - iniconfig==2.3.0
+          - packaging==25.0
+          - pluggy==1.6.0
+          - pygments==2.19.2
+          - pytest==8.4.2
+          - pytest-asyncio==1.2.0
+          - pytest-sugar==1.1.1
+          - termcolor==3.2.0
 
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.20.0
