@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python and uv
         uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Cache uv virtualenv (.venv)
         uses: actions/cache@v4
