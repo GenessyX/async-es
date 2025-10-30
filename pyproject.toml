@@ -37,6 +37,7 @@ quote-style = "double"
 
 [tool.mypy]
 python_version = "3.14"
+mypy_path = ["src"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
