@@ -1,6 +1,8 @@
 import datetime
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, dataclass_transform
+import functools
+import inspect
+from dataclasses import MISSING, Field, dataclass, field, fields, is_dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, dataclass_transform
 
 from async_es.event import DomainEvent
 from async_es.sentinel import NO_ARG
@@ -113,3 +115,92 @@ def aggregate[T](  # noqa: PLR0913
         slots=slots,
         weakref_slot=weakref_slot,
     )(cls)  # type: ignore[arg-type]
+
+
+def _has_default(f: Field[Any]) -> bool:
+    # dataclasses.Field.default_factory is MISSING by default; attribute always exists
+    return (f.default is not MISSING) or (f.default_factory is not MISSING)
+
+
+def event[T: Aggregate[Any], R, **P](  # noqa: C901
+    event_type: str,
+    payload: type | Callable[..., Any],
+    *,
+    aliases: dict[str, str] | None = None,
+    field_from_return: str | None = None,
+) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
+    """
+    Decorate an instance method of an Aggregate so that after it runs,
+    an event is raised via self._raise_event(event_type, payload_instance).
+
+    payload:
+      - a dataclass **type** → payload is constructed from method args/self attrs
+      - or a **builder callable** (self, *args, **kwargs) -> dataclass instance
+
+    aliases: map payload_field -> method_param when names differ
+    field_from_return: if set, inject method return value into that payload field
+    """
+
+    def decorator(func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:  # noqa: C901
+        sig = inspect.signature(func)
+
+        @functools.wraps(func)
+        def wrapper(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
+            # run original method
+            result = func(self, *args, **kwargs)
+
+            # build payload instance
+            if callable(payload) and not (isinstance(payload, type) and is_dataclass(payload)):
+                # custom builder path
+                payload_instance = payload(self, *args, **kwargs)
+            else:
+                payload_type = payload
+                if not (isinstance(payload_type, type) and is_dataclass(payload_type)):
+                    msg = "event(...): 'payload' must be a dataclass type or a builder callable"
+                    raise TypeError(msg)
+
+                bound = sig.bind(self, *args, **kwargs)
+                bound.apply_defaults()
+                bound_args = dict(bound.arguments)  # includes 'self'
+                # Exclude 'self' from param lookup
+                param_names = [n for n in bound_args if n != "self"]
+
+                flds = list(fields(payload_type))
+                data: dict[str, Any] = {}
+
+                # Special case: single-field payload + single non-self arg → map automatically
+                if not aliases and len(flds) == 1 and len(param_names) == 1:
+                    only_field = flds[0].name
+                    only_param = param_names[0]
+                    data[only_field] = bound_args[only_param]
+                    if field_from_return and field_from_return == only_field:
+                        data[only_field] = result  # return value overrides
+                else:
+                    for f in flds:
+                        target_name = f.name
+                        source_name = (aliases or {}).get(target_name, target_name)
+
+                        if source_name in bound_args:
+                            data[target_name] = bound_args[source_name]
+                        elif hasattr(self, source_name):
+                            data[target_name] = getattr(self, source_name)
+                        elif field_from_return and target_name == field_from_return:
+                            data[target_name] = result
+                        elif _has_default(f):
+                            # allow dataclass to fill its own default by omission
+                            pass
+                        else:
+                            msg = (
+                                f"event(...): cannot populate payload field '{target_name}': "
+                                f"no method arg, no self.{source_name}, and no default"
+                            )
+                            raise TypeError(msg)
+
+                payload_instance = payload_type(**data)
+
+            self._raise_event(event_type=event_type, event=payload_instance)
+            return result
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
