@@ -1,8 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
+  # push:
+  #   branches: [ main ]
   pull_request:
   workflow_dispatch:
 
@@ -15,17 +15,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python and uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.14'
-
-      - name: Cache uv virtualenv (.venv)
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Cache ruff
         uses: actions/cache@v4
