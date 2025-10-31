@@ -2,8 +2,9 @@ import datetime
 import functools
 import inspect
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import MISSING, Field, dataclass, field, fields, is_dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, dataclass_transform
+from dataclasses import MISSING, Field, asdict, dataclass, field, fields, is_dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, cast, dataclass_transform
+from uuid import UUID
 
 from async_es.event import DomainEvent
 from async_es.sentinel import NO_ARG
@@ -13,6 +14,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from _typeshed import DataclassInstance
+
+
+@dataclass
+class Created:
+    data: dict[str, Any]
 
 
 @dataclass(kw_only=True, eq=True)
@@ -28,8 +34,32 @@ class Aggregate[AggregateIdT: AggregateId]:
 
     def __post_init__(self) -> None:
         if self.created_at is NO_ARG:
-            self.created_at = datetime.datetime.now(datetime.UTC)
-            self.updated_at = self.created_at
+            now = datetime.datetime.now(datetime.UTC)
+            self.created_at = now
+            self.updated_at = now
+            # Emit Created event upon first initialization with all init fields (excluding internals/timestamps)
+            init_data: dict[str, Any] = {}
+            for f in fields(self):
+                name = f.name
+                if name.startswith("_") or name in {"created_at", "updated_at", "deleted_at"}:
+                    continue
+                value = getattr(self, name)
+                init_data[name] = self._to_primitive(value)
+            self._raise_event("created", Created(data=init_data))
+
+    @staticmethod
+    def _to_primitive(value: Any) -> Any:  # noqa: ANN401
+        if is_dataclass(value):
+            return asdict(cast("DataclassInstance", value))
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return value.isoformat()
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, list):
+            return [Aggregate._to_primitive(v) for v in value]
+        if isinstance(value, dict):
+            return {k: Aggregate._to_primitive(v) for k, v in value.items()}
+        return value
 
     def __hash__(self) -> int:
         return hash(self.id)

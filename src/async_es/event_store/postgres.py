@@ -100,8 +100,8 @@ class AsyncPGEventStore(EventStore):
     @staticmethod
     def _payload_to_json(payload: object) -> str:
         if dataclasses.is_dataclass(payload) and not isinstance(payload, type):
-            return json.dumps(dataclasses.asdict(payload))
-        return json.dumps(payload)
+            return json.dumps(dataclasses.asdict(payload), default=str)
+        return json.dumps(payload, default=str)
 
     @staticmethod
     def _payload_from_json(payload_module: str, payload_type: str, data: object) -> object:

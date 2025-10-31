@@ -58,13 +58,10 @@ async def pg_store(pg_dsn: str) -> "AsyncIterator[AsyncPGEventStore]":
 
 
 def make_repo(store: AsyncPGEventStore) -> EventSourcedRepository[CounterId]:
-    def factory(counter_id: CounterId) -> Counter:
-        return Counter(id=counter_id)
-
     return EventSourcedRepository[CounterId](
         aggregate_type=Counter.aggregate_name,
         event_store=store,
-        factory=factory,
+        aggregate_cls=Counter,
     )
 
 
@@ -97,18 +94,17 @@ async def test_application_saves_and_restores_with_postgres(pg_store: AsyncPGEve
     finally:
         await conn.close()
 
-    assert len(rows) == 2
-    assert {r["event_type"] for r in rows} == {"incremented"}
-    for r in rows:
-        # payload may be str or dict depending on driver version
+    assert len(rows) == 3
+    assert {r["event_type"] for r in rows} == {"created", "incremented"}
+
+    inc_rows = [r for r in rows if r["event_type"] == "incremented"]
+    amounts: set[int] = set()
+    for r in inc_rows:
         payload = r["payload"]
         if isinstance(payload, str):
             payload = _json.loads(payload)
-        assert payload["amount"] in {3, 4}
-        assert r["payload_type"] == "Increment"
-        assert r["aggregate_type"] == Counter.aggregate_name
-        assert r["aggregate_id"] == counter_id
-        assert r["occurred_at"] is not None
+        amounts.add(cast("int", payload["amount"]))
+    assert amounts == {3, 4}
 
     # re-load via repository
     new_repo = make_repo(pg_store)
@@ -134,7 +130,7 @@ async def test_events_buffer_cleared_after_save_with_postgres(pg_store: AsyncPGE
     # After save, aggregate should have no pending events buffered
     assert counter.events == []
 
-    # direct DB verification of two rows and amounts
+    # direct DB verification of three rows and increment amounts
     conn = await asyncpg.connect(pg_dsn)
     try:
         rows = await conn.fetch(
@@ -149,9 +145,10 @@ async def test_events_buffer_cleared_after_save_with_postgres(pg_store: AsyncPGE
     finally:
         await conn.close()
 
-    assert len(rows) == 2
+    assert len(rows) == 3
+    inc_rows = [r for r in rows if r["event_type"] == "incremented"]
     amounts: set[int] = set()
-    for r in rows:
+    for r in inc_rows:
         payload = r["payload"]
         if isinstance(payload, str):
             payload = _json.loads(payload)

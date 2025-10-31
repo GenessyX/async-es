@@ -32,13 +32,10 @@ class Counter(Aggregate[CounterId]):
 
 
 def make_repo(store: InMemoryEventStore) -> EventSourcedRepository[CounterId]:
-    def factory(counter_id: CounterId) -> Counter:
-        return Counter(id=counter_id)
-
     return EventSourcedRepository[CounterId](
         aggregate_type=Counter.aggregate_name,
         event_store=store,
-        factory=factory,
+        aggregate_cls=Counter,
     )
 
 
@@ -72,10 +69,10 @@ async def test_application_saves_and_restores() -> None:
     reloaded_counter = cast("Counter", reloaded)
 
     assert reloaded_counter.value == 3
-    # notifier received one batch of two events
+    # notifier received one batch of three events (created + two increments)
     assert len(notifier.received) == 1
     batch = notifier.received[0]
-    assert [e.event_type for e in batch] == ["incremented", "incremented"]
+    assert [e.event_type for e in batch] == ["created", "incremented", "incremented"]
     assert all(e.aggregate_id == counter_id for e in batch)
 
 
