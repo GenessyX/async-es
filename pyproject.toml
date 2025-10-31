@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "GenessyX", email = "haritonovgleb123@gmail.com" }]
 requires-python = ">=3.14"
-dependencies = ["asyncpg>=0.29.0"]
+dependencies = ["asyncpg>=0.29.0", "aiokafka>=0.11.0"]
 
 [project.scripts]
 async-es = "async_es:main"
@@ -45,7 +45,7 @@ python_version = "3.14"
 mypy_path = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg", "asyncpg.*"]
+module = ["asyncpg", "asyncpg.*", "aiokafka", "aiokafka.*"]
 ignore_missing_imports = true
 
 [tool.pyright]
