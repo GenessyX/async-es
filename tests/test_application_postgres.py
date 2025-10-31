@@ -75,6 +75,13 @@ async def pg_store(pg_dsn: str) -> "AsyncIterator[AsyncPGEventStore]":
         yield store
     finally:
         await store.close()
+        # Cleanup persisted events when using external Postgres
+        if os.getenv("POSTGRES_DSN"):
+            conn = await asyncpg.connect(pg_dsn)
+            try:
+                await conn.execute("DELETE FROM events WHERE aggregate_type = $1", Counter.aggregate_name)
+            finally:
+                await conn.close()
 
 
 def make_repo(store: AsyncPGEventStore) -> EventSourcedRepository[CounterId]:
