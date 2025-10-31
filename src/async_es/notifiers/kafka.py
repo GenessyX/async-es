@@ -4,12 +4,12 @@ import dataclasses
 import json
 from typing import TYPE_CHECKING, Any
 
+from aiokafka import AIOKafkaProducer
+
 from async_es.protocols import ApplicationNotifier
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from aiokafka import AIOKafkaProducer
 
     from async_es.event import DomainEvent
 
@@ -52,9 +52,7 @@ class KafkaNotifier(ApplicationNotifier):
     async def start(self) -> None:
         if self._producer is not None:
             return
-        mod = __import__("aiokafka", fromlist=["AIOKafkaProducer"])  # dynamic import avoids static resolution issues
-        producer_cls = mod.AIOKafkaProducer
-        producer = producer_cls(
+        producer = AIOKafkaProducer(
             bootstrap_servers=self._bootstrap_servers,
             client_id=self._client_id,
             value_serializer=lambda v: v,
