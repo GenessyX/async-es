@@ -1,5 +1,7 @@
+import asyncio
 import dataclasses
 import json as _json
+import os
 from typing import TYPE_CHECKING, cast
 
 import asyncpg
@@ -35,8 +37,25 @@ class Counter(Aggregate[CounterId]):
         self.value += amount
 
 
+async def _wait_pg_ready(dsn: str) -> None:
+    for _ in range(30):
+        try:
+            conn = await asyncpg.connect(dsn)
+            await conn.close()
+        except Exception:  # noqa: BLE001
+            await asyncio.sleep(1)
+        else:
+            return
+    msg = "PostgreSQL not ready"
+    raise RuntimeError(msg)
+
+
 @pytest.fixture
 def pg_dsn() -> "Iterator[str]":
+    env_dsn = os.getenv("POSTGRES_DSN")
+    if env_dsn:
+        yield env_dsn
+        return
     with PostgresContainer("postgres:16-alpine") as pg:
         host = pg.get_container_host_ip()
         port = pg.get_exposed_port(5432)
@@ -49,6 +68,7 @@ def pg_dsn() -> "Iterator[str]":
 
 @pytest_asyncio.fixture
 async def pg_store(pg_dsn: str) -> "AsyncIterator[AsyncPGEventStore]":
+    await _wait_pg_ready(pg_dsn)
     store = await AsyncPGEventStore.create(dsn=pg_dsn)
     await store.ensure_schema()
     try:

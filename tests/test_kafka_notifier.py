@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import os
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import pytest_asyncio
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from testcontainers.kafka import KafkaContainer  # type: ignore[import-untyped]
 
 from async_es.event import DomainEvent
@@ -26,19 +29,64 @@ class Payload:
     x: int
 
 
+async def _wait_kafka_ready(bootstrap: str) -> None:
+    started = False
+    for _ in range(30):
+        producer = AIOKafkaProducer(bootstrap_servers=bootstrap)
+        try:
+            await producer.start()
+            await producer.stop()
+            started = True
+            break
+        except Exception:  # noqa: BLE001
+            await asyncio.sleep(1)
+    if not started:
+        msg = "Kafka not ready"
+        raise RuntimeError(msg)
+
+
 @pytest_asyncio.fixture
 async def kafka_bootstrap() -> AsyncIterator[str]:
-    # Start a Kafka container and yield its bootstrap servers URL
-    with KafkaContainer("confluentinc/cp-kafka:7.6.0") as kafka:
-        bootstrap_servers = kafka.get_bootstrap_server()
-        # Give broker a moment to settle
-        await asyncio.sleep(1)
-        yield bootstrap_servers
+    env_bootstrap = os.getenv("KAFKA_BOOTSTRAP")
+    test_topic = os.getenv("KAFKA_TEST_TOPIC", "test-events")
+
+    if env_bootstrap:
+        await _wait_kafka_ready(env_bootstrap)
+        # Pre-clean topic
+        admin = AIOKafkaAdminClient(bootstrap_servers=env_bootstrap)
+        await admin.start()
+        try:
+            with suppress(Exception):
+                await admin.delete_topics([test_topic])
+            with suppress(Exception):
+                await admin.create_topics([NewTopic(name=test_topic, num_partitions=1, replication_factor=1)])
+        finally:
+            await admin.close()
+
+        try:
+            yield env_bootstrap
+        finally:
+            # Post-clean topic
+            admin2 = AIOKafkaAdminClient(bootstrap_servers=env_bootstrap)
+            await admin2.start()
+            try:
+                with suppress(Exception):
+                    await admin2.delete_topics([test_topic])
+                with suppress(Exception):
+                    await admin2.create_topics([NewTopic(name=test_topic, num_partitions=1, replication_factor=1)])
+            finally:
+                await admin2.close()
+    else:
+        with KafkaContainer("confluentinc/cp-kafka:7.6.0") as kafka:
+            bootstrap_servers = kafka.get_bootstrap_server()
+            await asyncio.sleep(1)
+            await _wait_kafka_ready(bootstrap_servers)
+            yield bootstrap_servers
 
 
 @pytest.mark.asyncio
 async def test_kafka_notifier_sends_events(kafka_bootstrap: str) -> None:
-    topic = "test-events"
+    topic = os.getenv("KAFKA_TEST_TOPIC", "test-events")
     notifier = KafkaNotifier(bootstrap_servers=kafka_bootstrap, topic=topic)
 
     eid = FooId.generate()
@@ -60,8 +108,6 @@ async def test_kafka_notifier_sends_events(kafka_bootstrap: str) -> None:
     await notifier.notify(events)
     await notifier.close()
 
-    # Consume back to verify
-
     consumer = AIOKafkaConsumer(
         topic,
         bootstrap_servers=kafka_bootstrap,
@@ -72,7 +118,6 @@ async def test_kafka_notifier_sends_events(kafka_bootstrap: str) -> None:
     await consumer.start()
     try:
         received: list[dict[str, Any]] = []
-        # Collect up to 2 messages or timeout
         async for msg in consumer:
             assert msg.value
             received.append(cast("dict[str, Any]", json.loads(msg.value)))

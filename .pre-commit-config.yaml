@@ -76,6 +76,7 @@ repos:
           - pygments==2.19.2
           - pytest==8.4.2
           - pytest-asyncio==1.2.0
+          - pytest-dotenv==0.5.2
           - pytest-sugar==1.1.1
           - python-dotenv==1.2.1
           - pywin32==311 ; sys_platform == 'win32'
