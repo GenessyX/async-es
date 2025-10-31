@@ -35,16 +35,10 @@ def make_repo(store: InMemoryEventStore) -> EventSourcedRepository[CounterId]:
     def factory(counter_id: CounterId) -> Counter:
         return Counter(id=counter_id)
 
-    def apply(counter: Aggregate[CounterId], domain_event: "DomainEvent[CounterId, Any]") -> None:
-        concrete = cast("Counter", counter)
-        if domain_event.event_type == "incremented":
-            concrete.value += domain_event.payload.amount
-
     return EventSourcedRepository[CounterId](
         aggregate_type=Counter.aggregate_name,
         event_store=store,
         factory=factory,
-        apply=apply,
     )
 
 

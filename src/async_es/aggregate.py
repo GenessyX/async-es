@@ -1,6 +1,7 @@
 import datetime
 import functools
 import inspect
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import MISSING, Field, dataclass, field, fields, is_dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, dataclass_transform
 
@@ -9,7 +10,7 @@ from async_es.sentinel import NO_ARG
 from async_es.types import AggregateId
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from _typeshed import DataclassInstance
 
@@ -23,6 +24,7 @@ class Aggregate[AggregateIdT: AggregateId]:
     updated_at: datetime.datetime = field(default=NO_ARG)  # type: ignore[assignment]
     deleted_at: datetime.datetime | None = None
     _events: list[DomainEvent[AggregateIdT, Any]] = field(default_factory=list)
+    _suppress_events: bool = False
 
     def __post_init__(self) -> None:
         if self.created_at is NO_ARG:
@@ -37,7 +39,20 @@ class Aggregate[AggregateIdT: AggregateId]:
             return False
         return self.id == other.id
 
+    def suppress_events(self) -> AbstractContextManager[None]:
+        @contextmanager
+        def _cm() -> "Iterator[None]":
+            self._suppress_events = True
+            try:
+                yield None
+            finally:
+                self._suppress_events = False
+
+        return _cm()
+
     def _raise_event(self, event_type: str, event: "DataclassInstance") -> None:
+        if self._suppress_events:
+            return
         self._events.append(
             DomainEvent(
                 aggregate_id=self.id,
@@ -198,8 +213,13 @@ def event[T: Aggregate[Any], R, **P](  # noqa: C901
 
                 payload_instance = payload_type(**data)
 
+            # only raise when not suppressing (rehydration mode)
             self._raise_event(event_type=event_type, event=payload_instance)
             return result
+
+        # annotate wrapper so repository can map event_type -> method
+        wrapper.__event_type__ = event_type  # type: ignore[attr-defined]
+        wrapper.__payload_type__ = payload  # type: ignore[attr-defined]
 
         return wrapper  # type: ignore[return-value]
 

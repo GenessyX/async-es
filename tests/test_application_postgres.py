@@ -1,6 +1,6 @@
 import dataclasses
 import json as _json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import asyncpg
 import pytest
@@ -15,8 +15,6 @@ from async_es.types import AggregateId
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
-
-    from async_es.event import DomainEvent
 
 
 class CounterId(AggregateId): ...
@@ -63,16 +61,10 @@ def make_repo(store: AsyncPGEventStore) -> EventSourcedRepository[CounterId]:
     def factory(counter_id: CounterId) -> Counter:
         return Counter(id=counter_id)
 
-    def apply(counter: Aggregate[CounterId], domain_event: "DomainEvent[CounterId, Any]") -> None:
-        concrete = cast("Counter", counter)
-        if domain_event.event_type == "incremented":
-            concrete.value += domain_event.payload.amount
-
     return EventSourcedRepository[CounterId](
         aggregate_type=Counter.aggregate_name,
         event_store=store,
         factory=factory,
-        apply=apply,
     )
 
 
